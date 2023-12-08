@@ -10,6 +10,7 @@ import copy
 from logging import getLogger
 
 import chainer
+
 from chainer import functions as F
 import numpy as np
 
@@ -123,7 +124,9 @@ class PixelWiseA3C(agent.AttributeSavingMixin, agent.AsyncAgent):
         self.average_value = 0
         self.average_entropy = 0
 
+
 #######################
+        print("Here")
         self.shared_model.to_gpu()
         chainerrl.distribution.CategoricalDistribution.mylog_prob = mylog_prob
         chainerrl.distribution.CategoricalDistribution.myentropy = myentropy

@@ -20,7 +20,7 @@ SAVE_PATH            = "./model/denoise_myfcn_"
 LEARNING_RATE    = 0.001
 TRAIN_BATCH_SIZE = 64
 TEST_BATCH_SIZE  = 1 #must be 1
-N_EPISODES           = 30000
+N_EPISODES           = 300
 EPISODE_LEN = 5
 GAMMA = 0.95 # discount factor
 
@@ -119,4 +119,4 @@ if __name__ == '__main__':
         fout.write("{s}[h]\n".format(s=(end - start)/60/60))
         fout.close()
     except Exception as error:
-        print(error.message)
+        print("Error",error)

@@ -1,0 +1,2 @@
+BSD68/gray/try/input_image.png
+BSD68/gray/try/try.png

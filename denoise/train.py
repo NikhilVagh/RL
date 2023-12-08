@@ -12,7 +12,7 @@ from pixelwise_a3c import *
 
 #_/_/_/ paths _/_/_/ 
 TRAINING_DATA_PATH          = "../training_BSD68.txt"
-TESTING_DATA_PATH           = "../testing.txt"
+TESTING_DATA_PATH           = "../try.txt"
 IMAGE_DIR_PATH              = "../"
 SAVE_PATH            = "./model/denoise_myfcn_"
  
@@ -20,7 +20,7 @@ SAVE_PATH            = "./model/denoise_myfcn_"
 LEARNING_RATE    = 0.001
 TRAIN_BATCH_SIZE = 64
 TEST_BATCH_SIZE  = 1 #must be 1
-N_EPISODES           = 30000
+N_EPISODES           = 100
 EPISODE_LEN = 5
 SNAPSHOT_EPISODES  = 3000
 TEST_EPISODES = 3000
@@ -28,7 +28,7 @@ GAMMA = 0.95 # discount factor
 
 #noise setting
 MEAN = 0
-SIGMA = 15
+SIGMA = 100
 
 N_ACTIONS = 9
 MOVE_RANGE = 3 #number of actions that move the pixel values. e.g., when MOVE_RANGE=3, there are three actions: pixel_value+=1, +=0, -=1.
@@ -36,7 +36,31 @@ CROP_SIZE = 70
 
 GPU_ID = 0
 
-def test(loader, agent, fout):
+def add_salt_and_pepper_noise(image, salt_prob, pepper_prob):
+    """
+    Add salt-and-pepper noise to an image.
+
+    Parameters:
+    - image: NumPy array representing the image.
+    - salt_prob: Probability of adding salt noise.
+    - pepper_prob: Probability of adding pepper noise.
+
+    Returns:
+    - Noisy image.
+    """
+    noisy_image = np.copy(image)
+
+    # Add salt noise
+    salt_mask = np.random.rand(*image.shape) < salt_prob
+    noisy_image[salt_mask] = 1
+
+    # Add pepper noise
+    pepper_mask = np.random.rand(*image.shape) < pepper_prob
+    noisy_image[pepper_mask] = 0
+
+    return noisy_image
+
+def test(loader, agent, fout=None):
     sum_psnr     = 0
     sum_reward = 0
     test_data_size = MiniBatchLoader.count_paths(TESTING_DATA_PATH)
@@ -44,6 +68,9 @@ def test(loader, agent, fout):
     for i in range(0, test_data_size, TEST_BATCH_SIZE):
         raw_x = loader.load_testing_data(np.array(range(i, i+TEST_BATCH_SIZE)))
         raw_n = np.random.normal(MEAN,SIGMA,raw_x.shape).astype(raw_x.dtype)/255
+        # salt_prob = 0.01  # Adjust the probability according to your preference
+        # pepper_prob = 0.01  # Adjust the probability according to your preference
+        # raw_n = add_salt_and_pepper_noise(raw_x,salt_prob,pepper_prob)
         current_state.reset(raw_x,raw_n)
         reward = np.zeros(raw_x.shape, raw_x.dtype)*255
         
@@ -55,17 +82,29 @@ def test(loader, agent, fout):
             sum_reward += np.mean(reward)*np.power(GAMMA,t)
 
         agent.stop_episode()
-            
+
         I = np.maximum(0,raw_x)
         I = np.minimum(1,I)
+        N = np.maximum(0,raw_x+raw_n)
+        N = np.minimum(1,N)
         p = np.maximum(0,current_state.image)
         p = np.minimum(1,p)
-        I = (I*255+0.5).astype(np.uint8)
-        p = (p*255+0.5).astype(np.uint8)
+        print(i, " : ", np.mean(np.square(I - p)))
+
+        I = (I[0]*255+0.5).astype(np.uint8)
+        N = (N[0]*255+0.5).astype(np.uint8)
+        p = (p[0]*255+0.5).astype(np.uint8)
+        p = np.transpose(p,(1,2,0))
+        I = np.transpose(I,(1,2,0))
+        N = np.transpose(N,(1,2,0))
+
+        cv2.imwrite('./resultimage/'+str(i)+'_output.png',p)
+        cv2.imwrite('./resultimage/'+str(i)+'_input.png',N)
+
         sum_psnr += cv2.PSNR(p, I)
  
     print("test total reward {a}, PSNR {b}".format(a=sum_reward*255/test_data_size, b=sum_psnr/test_data_size))
-    fout.write("test total reward {a}, PSNR {b}\n".format(a=sum_reward*255/test_data_size, b=sum_psnr/test_data_size))
+    # fout.write("test total reward {a}, PSNR {b}\n".format(a=sum_reward*255/test_data_size, b=sum_psnr/test_data_size))
     sys.stdout.flush()
  
  
@@ -100,13 +139,16 @@ def main(fout):
     for episode in range(1, N_EPISODES+1):
         # display current episode
         print("episode %d" % episode)
-        fout.write("episode %d\n" % episode)
+        # fout.write("episode %d\n" % episode)
         sys.stdout.flush()
         # load images
         r = indices[i:i+TRAIN_BATCH_SIZE]
         raw_x = mini_batch_loader.load_training_data(r)
         # generate noise
         raw_n = np.random.normal(MEAN,SIGMA,raw_x.shape).astype(raw_x.dtype)/255
+        # salt_prob = 0.01  # Adjust the probability according to your preference
+        # pepper_prob = 0.01  # Adjust the probability according to your preference
+        # raw_n = add_salt_and_pepper_noise(raw_x,salt_prob,pepper_prob)
         # initialize the current state and reward
         current_state.reset(raw_x,raw_n)
         reward = np.zeros(raw_x.shape, raw_x.dtype)
@@ -121,7 +163,10 @@ def main(fout):
 
         agent.stop_episode_and_train(current_state.image, reward, True)
         print("train total reward {a}".format(a=sum_reward*255))
-        fout.write("train total reward {a}\n".format(a=sum_reward*255))
+        print("error : ",np.mean(np.square(raw_x - current_state.image)))
+        # fout.write("{a}\n".format(a=sum_reward*255))
+        fout.write("{a}\n".format(a=np.mean(np.square(raw_x - current_state.image))))
+
         sys.stdout.flush()
 
         if episode % TEST_EPISODES == 0:
@@ -141,6 +186,7 @@ def main(fout):
             i = train_data_size - TRAIN_BATCH_SIZE
 
         optimizer.alpha = LEARNING_RATE*((1-episode/N_EPISODES)**0.9)
+    test(mini_batch_loader,agent)
  
      
  
@@ -158,4 +204,5 @@ if __name__ == '__main__':
         fout.write("{s}[h]\n".format(s=(end - start)/60/60))
         fout.close()
     except Exception as error:
-        print(error.message)
+        
+        print("error :", error)
